@@ -80,6 +80,8 @@ AGENT_PERSONAS: dict[str, dict] = {
             "dates and analogues in your reasoning. Be concise and data-driven."
         ),
         "context_fields": ["scenario", "analogues", "macro_context", "regime"],
+        "news_categories": ["Fed & Rates", "Economic Data", "Trade & Geopolitics"],
+        "priority_data": ["economic_calendar"],
     },
     "Momentum Analyst": {
         "system": (
@@ -89,6 +91,8 @@ AGENT_PERSONAS: dict[str, dict] = {
             "Be concise and technically grounded."
         ),
         "context_fields": ["scenario", "current_indicators", "price_table", "regime"],
+        "news_categories": ["Market Structure", "Tech & AI"],
+        "priority_data": ["key_dates"],
     },
     "Sentiment Analyst": {
         "system": (
@@ -97,6 +101,8 @@ AGENT_PERSONAS: dict[str, dict] = {
             "a warning. Reference VIX levels and regime in your reasoning. Be concise."
         ),
         "context_fields": ["scenario", "macro_context", "current_indicators", "analogues"],
+        "news_categories": ["Market Structure", "Trade & Geopolitics", "Fed & Rates"],
+        "priority_data": [],
     },
     "Quant Modeler": {
         "system": (
@@ -107,6 +113,8 @@ AGENT_PERSONAS: dict[str, dict] = {
             "is high. Be concise and statistically grounded."
         ),
         "context_fields": ["scenario", "current_indicators", "summary_stats", "regime", "analogues"],
+        "news_categories": ["Market Structure", "Economic Data"],
+        "priority_data": ["key_dates"],
     },
     "Earnings Analyst": {
         "system": (
@@ -116,6 +124,8 @@ AGENT_PERSONAS: dict[str, dict] = {
             "their rate sensitivity. Be concise and fundamentals-driven."
         ),
         "context_fields": ["scenario", "macro_context", "current_indicators", "analogues"],
+        "news_categories": ["Earnings", "Tech & AI", "Fed & Rates"],
+        "priority_data": ["earnings_calendar", "analyst_consensus"],
     },
 }
 
@@ -141,7 +151,7 @@ class SimulationResult:
 
 def build_agent_context(agent_name: str, seed: dict) -> str:
     fields = AGENT_PERSONAS[agent_name]["context_fields"]
-    lines = [f"## Scenario\n{seed['scenario']}\n"]
+    lines = [f"## Market Context (auto-generated from live news)\n{seed['scenario']}\n"]
 
     if "macro_context" in fields:
         m = seed.get("macro_context", {})
@@ -197,8 +207,56 @@ def build_agent_context(agent_name: str, seed: dict) -> str:
             )
         lines.append("")
 
+    # ── Per-agent filtered news briefing ──────────────────────────────────────
+    news_cats = AGENT_PERSONAS[agent_name].get("news_categories", [])
+    live_news = seed.get("live_news", [])
+    if live_news:
+        from news import get_news_briefing
+        lines.append(get_news_briefing(live_news, n=8, categories=news_cats or None))
+        lines.append("")
+    elif seed.get("live_news_text"):
+        lines.append(seed["live_news_text"])
+        lines.append("")
+
+    # ── Priority data sections (agent-specific) ────────────────────────────
+    priority = AGENT_PERSONAS[agent_name].get("priority_data", [])
+
+    if "earnings_calendar" in priority and seed.get("earnings_calendar"):
+        lines.append("## Upcoming Earnings (next 60 days)")
+        for e in seed["earnings_calendar"][:8]:
+            eps = f" | EPS est: {e['eps_estimate']}" if e.get("eps_estimate") else ""
+            lines.append(f"- {e['date']} {e['symbol']}{eps}")
+        lines.append("")
+
+    if "economic_calendar" in priority and seed.get("economic_calendar"):
+        lines.append("## Upcoming Economic Events (next 30 days)")
+        for e in seed["economic_calendar"][:6]:
+            detail = f" | Est: {e.get('estimate', 'N/A')} Prev: {e.get('previous', 'N/A')}"
+            lines.append(f"- {e['date']} {e['event']}{detail}")
+        lines.append("")
+
+    if "analyst_consensus" in priority and seed.get("analyst_consensus"):
+        lines.append("## Analyst Consensus (top QQQ holdings)")
+        for a in seed["analyst_consensus"]:
+            target = f" | PT: ${a['target_mean']:.0f}" if a.get("target_mean") else ""
+            current = f" (curr: ${a['current_price']:.0f})" if a.get("current_price") else ""
+            lines.append(
+                f"- {a['symbol']}: Buy={a['buy']} Hold={a['hold']} Sell={a['sell']}{target}{current}"
+            )
+        lines.append("")
+
+    if "key_dates" in priority and seed.get("key_dates"):
+        lines.append("## Key Market Dates (next 30 days)")
+        for e in seed["key_dates"][:6]:
+            lines.append(f"- {e['date']} [{e['type'].upper()}] {e['event']}: {e.get('detail','')}")
+        lines.append("")
+
     lines.append(f"## Current Price\n{seed['ticker']}: ${seed.get('current_price', 'N/A')}\n")
-    lines.append("Provide your 5-trading-day price forecast.")
+    lines.append(
+        "Based on the current market conditions and latest news above, provide your "
+        "5-trading-day QQQ price forecast. Reference specific news articles by source "
+        "in your reasoning (e.g. 'The Reuters report on... supports my thesis because...')."
+    )
     return "\n".join(lines)
 
 

@@ -1,5 +1,6 @@
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List
 
 # ── Scenario classification ────────────────────────────────────────────────────
 
@@ -54,8 +55,28 @@ AGENT_SCENARIO_WEIGHTS: dict[str, dict[str, float]] = {
     },
 }
 
-# Base price uncertainty for Bayesian Gaussian model (in dollars)
+# Base price uncertainty for Gaussian models (in dollars)
 _BASE_SIGMA = 10.0
+
+# ── Agent correlation matrix (hardcoded; see TODOS for empirical calibration) ─
+_AGENT_CORRELATION: dict[tuple, float] = {
+    ("Macro Strategist",  "Earnings Analyst"):   0.4,
+    ("Earnings Analyst",  "Macro Strategist"):   0.4,
+    ("Momentum Analyst",  "Quant Modeler"):      0.6,
+    ("Quant Modeler",     "Momentum Analyst"):   0.6,
+    ("Sentiment Analyst", "Macro Strategist"):   0.3,
+    ("Macro Strategist",  "Sentiment Analyst"):  0.3,
+}
+_DEFAULT_AGENT_CORR = 0.2  # for any pair not listed above
+
+# ── Regime → per-agent weight multipliers ─────────────────────────────────────
+_REGIME_WEIGHTS: dict[str, dict[str, float]] = {
+    "low_vol_uptrend":    {"Momentum Analyst": 1.3, "Quant Modeler": 1.2},
+    "high_vol_uptrend":   {"Macro Strategist": 1.3, "Sentiment Analyst": 1.2},
+    "low_vol_ranging":    {"Quant Modeler": 1.2, "Earnings Analyst": 1.2},
+    "high_vol_downtrend": {"Macro Strategist": 1.4, "Sentiment Analyst": 1.3},
+    "crisis":             {"Macro Strategist": 1.5, "Sentiment Analyst": 1.4},
+}
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -76,6 +97,11 @@ class Consensus:
     credible_low: float = 0.0
     credible_high: float = 0.0
     method: str = "simple"
+    # 5-layer institutional engine outputs
+    conviction_score: int = 0
+    regime_label: str = ""
+    upweighted_agents: List[str] = field(default_factory=list)
+    entropy_label: str = ""
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -278,4 +304,181 @@ def aggregate_forecasts_bayesian(rounds: list, scenario_text: str) -> Consensus:
         credible_low=credible_low,
         credible_high=credible_high,
         method="bayesian",
+    )
+
+
+# ── 5-Layer Institutional Consensus Engine ────────────────────────────────────
+
+def aggregate_forecasts_institutional(
+    rounds: list,
+    scenario_text: str,
+    regime: str,
+    current_price: float,
+    macro_context: dict = None,
+) -> Consensus:
+    """
+    5-Layer Institutional Consensus Engine:
+
+    Layer 1 — Black-Litterman Prior: scalar BL fuses a market-implied return
+              (RF + 1.15×ERP, annualised → 5-day) with agent Gaussian views via
+              precision-weighted update.  Prior precision = 1/(τ×σ²), τ=0.025.
+
+    Layer 2 — Copula Dependency Correction: effective_N = N²/Σcorr accounts for
+              inter-agent correlation; posterior_std ×= sqrt(N/effective_N).
+
+    Layer 3 — Regime-Adaptive Weights: multiplies composite weight for agents
+              best suited to the current market regime (or "crisis" if VIX>35).
+
+    Layer 4 — Shannon Entropy Disagreement: H>1.0 → HIGH ENTROPY, CI×1.5;
+              H<0.5 → GROUPTHINK.
+
+    Layer 5 — Fractional Kelly Conviction: kelly × 0.35 fraction → 0–100 score.
+    """
+    from history import get_agent_track_records  # deferred to avoid circular import
+
+    valid = [f for f in rounds[2] if f.status == "ok"]
+    if not valid:
+        return aggregate_forecasts(rounds[2])
+
+    if macro_context is None:
+        macro_context = {}
+
+    # ── Layer 1: Black-Litterman Prior ────────────────────────────────────────
+    RF  = macro_context.get("risk_free_rate", 0.05)
+    ERP = 0.05  # equity risk premium (constant)
+    tau = 0.025
+    implied_annual = RF + 1.15 * ERP
+    if current_price and current_price > 0:
+        bl_prior_mean  = current_price * (1.0 + implied_annual * 5.0 / 252.0)
+        prior_precision = 1.0 / (tau * _BASE_SIGMA ** 2)
+    else:
+        bl_prior_mean   = None
+        prior_precision = 0.0
+
+    # ── Prerequisite: track record + scenario + conviction weights ────────────
+    track_records = get_agent_track_records()
+    category  = classify_scenario(scenario_text)
+    conviction = _conviction_multipliers(rounds)
+
+    # ── Layer 3: Regime-Adaptive Weights ─────────────────────────────────────
+    actual_regime = regime
+    if macro_context.get("vix", 0) > 35:
+        actual_regime = "crisis"
+    regime_mults = _REGIME_WEIGHTS.get(actual_regime, {})
+
+    composite: dict[str, float] = {}
+    for f in valid:
+        name = f.agent_name
+        tr = track_records.get(name, 0.5)
+        sr = AGENT_SCENARIO_WEIGHTS.get(name, {}).get(category, 1.0)
+        cv = conviction.get(name, 1.0)
+        rg = regime_mults.get(name, 1.0)
+        composite[name] = tr * sr * cv * rg * f.confidence
+
+    upweighted_agents = [
+        name for name in regime_mults
+        if regime_mults[name] > 1.0 and any(f.agent_name == name for f in valid)
+    ]
+
+    # ── Layer 1 (cont.) + 4 (Gaussian update) ────────────────────────────────
+    total_precision  = prior_precision
+    weighted_mean_num = (prior_precision * bl_prior_mean) if bl_prior_mean is not None else 0.0
+    for f in valid:
+        w         = max(composite[f.agent_name], 0.01)
+        midpoint  = (f.target_low + f.target_high) / 2.0
+        sigma     = _BASE_SIGMA / w
+        precision = 1.0 / sigma ** 2
+        total_precision   += precision
+        weighted_mean_num += midpoint * precision
+
+    posterior_mean = weighted_mean_num / total_precision
+    posterior_std  = math.sqrt(1.0 / total_precision)
+
+    # ── Layer 2: Copula correction ────────────────────────────────────────────
+    N = len(valid)
+    agent_names = [f.agent_name for f in valid]
+    sum_corr = 0.0
+    for i, a in enumerate(agent_names):
+        for j, b_name in enumerate(agent_names):
+            if i == j:
+                sum_corr += 1.0
+            else:
+                sum_corr += _AGENT_CORRELATION.get((a, b_name), _DEFAULT_AGENT_CORR)
+    effective_N    = (N ** 2) / sum_corr if sum_corr > 0 else float(N)
+    copula_factor  = math.sqrt(N / effective_N) if effective_N > 0 else 1.0
+    posterior_std *= copula_factor
+
+    # ── Direction probabilities ───────────────────────────────────────────────
+    total_w = sum(composite[f.agent_name] for f in valid)
+    bull_w  = sum(composite[f.agent_name] for f in valid if f.direction == "bullish")
+    bear_w  = sum(composite[f.agent_name] for f in valid if f.direction == "bearish")
+    base_w  = sum(composite[f.agent_name] for f in valid if f.direction == "neutral")
+    bull_prob = bull_w / total_w if total_w > 0 else 0.0
+    bear_prob = bear_w / total_w if total_w > 0 else 0.0
+    base_prob = base_w / total_w if total_w > 0 else 0.0
+
+    # ── Layer 4: Shannon Entropy → entropy_label + CI adjustment ─────────────
+    H = 0.0
+    for p in (bull_prob, bear_prob, base_prob):
+        if p > 0:
+            H -= p * math.log2(p)
+    if H > 1.0:
+        entropy_label = "HIGH ENTROPY"
+        posterior_std *= 1.5
+    elif H < 0.5:
+        entropy_label = "GROUPTHINK"
+    else:
+        entropy_label = ""
+
+    credible_low  = round(posterior_mean - 1.645 * posterior_std, 2)
+    credible_high = round(posterior_mean + 1.645 * posterior_std, 2)
+
+    # ── Layer 5: Fractional Kelly Conviction ──────────────────────────────────
+    p_best = max(bull_prob, bear_prob, base_prob)
+    b = (posterior_mean / current_price - 1.0) if current_price and current_price > 0 else 0.0
+    if b <= 0:
+        conviction_score = 0
+    else:
+        q = 1.0 - p_best
+        kelly = (p_best * b - q) / b * 0.35
+        kelly = max(0.0, min(kelly, 0.25))
+        conviction_score = int(kelly / 0.25 * 100)
+
+    # ── Price targets ─────────────────────────────────────────────────────────
+    sorted_highs = sorted([f.target_high for f in valid], reverse=True)
+    sorted_lows  = sorted([f.target_low  for f in valid])
+    bull_target  = sum(sorted_highs[:2]) / 2
+    bear_target  = sum(sorted_lows[:2])  / 2
+
+    # ── Disagreement ──────────────────────────────────────────────────────────
+    avg_w      = total_w / N
+    bullish_hw = [f for f in valid if f.direction == "bullish" and composite[f.agent_name] >= avg_w * 0.8]
+    bearish_hw = [f for f in valid if f.direction == "bearish" and composite[f.agent_name] >= avg_w * 0.8]
+    disagreement = len(bullish_hw) > 0 and len(bearish_hw) > 0
+    detail = (
+        ", ".join(f.agent_name for f in bullish_hw) + " (bullish) vs "
+        + ", ".join(f.agent_name for f in bearish_hw) + " (bearish)"
+    ) if disagreement else ""
+
+    avg_conf = sum(f.confidence for f in valid) / N
+
+    return Consensus(
+        bull_prob=round(bull_prob, 3),
+        base_prob=round(base_prob, 3),
+        bear_prob=round(bear_prob, 3),
+        consensus_target=round(posterior_mean, 2),
+        bull_target=round(bull_target, 2),
+        base_target=round(posterior_mean, 2),
+        bear_target=round(bear_target, 2),
+        agent_count=N,
+        avg_confidence=round(avg_conf, 3),
+        disagreement=disagreement,
+        disagreement_detail=detail,
+        credible_low=credible_low,
+        credible_high=credible_high,
+        method="institutional",
+        conviction_score=conviction_score,
+        regime_label=actual_regime,
+        upweighted_agents=upweighted_agents,
+        entropy_label=entropy_label,
     )

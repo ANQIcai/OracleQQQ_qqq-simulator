@@ -80,6 +80,32 @@ def calc_summary_stats(df: pd.DataFrame) -> dict:
     }
 
 
+def calc_ema(series: pd.Series, span: int) -> Optional[float]:
+    series = series.dropna()
+    if len(series) < span:
+        return None
+    val = series.ewm(span=span, adjust=False).mean().iloc[-1]
+    return round(float(val), 2) if pd.notna(val) else None
+
+
+def calc_atr(df: pd.DataFrame, period: int = 14) -> Optional[float]:
+    """Average True Range over `period` bars."""
+    high = df["High"].squeeze().dropna()
+    low = df["Low"].squeeze().dropna()
+    close = df["Close"].squeeze().dropna()
+    if len(close) < period + 1:
+        return None
+    prev_close = close.shift(1)
+    tr = pd.concat([
+        high - low,
+        (high - prev_close).abs(),
+        (low - prev_close).abs(),
+    ], axis=1).max(axis=1)
+    atr = tr.ewm(com=period - 1, min_periods=period).mean()
+    val = atr.iloc[-1]
+    return round(float(val), 2) if pd.notna(val) else None
+
+
 def compute_all(df: pd.DataFrame) -> dict:
     close = df["Close"].squeeze()
     macd_val, signal_val, hist_val = calc_macd(close)
@@ -90,7 +116,10 @@ def compute_all(df: pd.DataFrame) -> dict:
         "macd_signal": signal_val,
         "macd_hist": hist_val,
         "bb_position": bb_pos,
+        "sma_20": calc_sma(close, 20),
         "sma_50": calc_sma(close, 50),
         "sma_200": calc_sma(close, 200),
+        "ema_9": calc_ema(close, 9),
+        "atr": calc_atr(df),
         "summary_stats": calc_summary_stats(df),
     }

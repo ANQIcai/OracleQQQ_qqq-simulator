@@ -3,7 +3,7 @@ from plotly.subplots import make_subplots
 import pandas as pd
 
 COLORS = {
-    "bg": "#0d1117",
+    "bg": "#000000",
     "surface": "#161b22",
     "border": "#30363d",
     "text": "#e6edf3",
