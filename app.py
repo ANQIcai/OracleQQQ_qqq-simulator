@@ -372,6 +372,7 @@ hist_mod.seed_demo_history()
 TICKER = "QQQ"
 try:
     df = data_mod.fetch_ohlcv(TICKER, period="1y")
+    df_5y = data_mod.fetch_ohlcv_5y(TICKER)
     macro = data_mod.fetch_macro_context()
     current_price = data_mod.get_current_price(df)
     ind = ind_mod.compute_all(df)
@@ -544,7 +545,7 @@ with st.sidebar:
     st.markdown(_cons_block, unsafe_allow_html=True)
 
     # ── HISTORICAL ANALOGUES as single HTML block ──
-    analogues = ana_mod.find_analogues(df, scenario, regime)
+    analogues = ana_mod.find_analogues(df_5y, scenario, regime)
     _ana_block = '<div style="border-top:1px solid #2a2a2e;padding-top:12px;margin-top:8px;margin-bottom:16px"><div style="font-size:9px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:#d1d4dc;margin-bottom:8px">HISTORICAL ANALOGUES</div>'
     if analogues:
         for a in analogues:
@@ -1079,7 +1080,7 @@ if predict_clicked:
         "current_indicators": ind,
         "macro_context": macro,
         "regime": regime,
-        "analogues": ana_mod.find_analogues(df, _auto_scenario, regime),
+        "analogues": ana_mod.find_analogues(df_5y, _auto_scenario, regime),
         "live_news": st.session_state.news_cache,
         "live_news_text": news_mod.format_for_agents(st.session_state.news_cache),
         "live_quote": st.session_state.live_quote_cache,

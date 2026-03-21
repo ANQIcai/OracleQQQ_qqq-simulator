@@ -22,21 +22,11 @@
 
 ## News & Data Pipeline
 
-### Historical Analogues: use 5-year dataset
-**What:** Pass a 5-year OHLCV dataframe to `find_analogues()` instead of the 1-year main df.
-**Why:** The HISTORICAL_EVENTS library spans 2018–2025, but with the 1y df only 2025+ events have enough pre-event data (30-day window). Everything else is skipped (`idx=0 → empty window → continue`). Currently produces at most 1 result.
-**Pros:** Full 16-event library becomes usable. Analogues section shows meaningful historical parallels. Much richer context for predictions.
-**Cons:** Requires a second yfinance fetch (5y period) — can be cached separately in data.py with `@st.cache_data`. Adds ~200ms on first load.
-**Context:** Flagged during plan-eng-review of sidebar data pipeline (2026-03-21). The bug is in `find_analogues()`: `window_df = df.iloc[max(0, idx-30):idx]` where idx=0 for all pre-2025 events → empty window → skipped. Fix is to load a longer df, not to change the analogue logic.
-**Depends on / blocked by:** Nothing.
+### ~~Historical Analogues: use 5-year dataset~~ ✓ Done 2026-03-21
+Added `fetch_ohlcv_5y()` in data.py (cached 1h). Both `find_analogues()` calls in app.py now use `df_5y`.
 
-### Replace debug prints with logging.debug in news.py
-**What:** Replace `print(f"[news] ...")` calls in `fetch_all_news()`, `fetch_finnhub_news()`, and `fetch_alphavantage_news()` with `logging.debug(...)` and configure a logger.
-**Why:** Debug prints added during the 2026-03-21 news pipeline fix will clutter production console output. They're useful for diagnosis but shouldn't be on by default.
-**Pros:** Clean production output. Still diagnostic when `LOG_LEVEL=DEBUG` is set.
-**Cons:** Minimal — just swapping print for logging.debug.
-**Context:** Flagged during plan-eng-review of sidebar data pipeline (2026-03-21). The prints are currently `[news] raw: 0 AV + 180 FH = 148 after dedup` etc.
-**Depends on / blocked by:** Nothing.
+### ~~Replace debug prints with logging.debug in news.py~~ ✓ Done 2026-03-21
+All 8 `print(f"[news] ...")` calls replaced with `log.debug(...)`. Logger configured via `logging.getLogger(__name__)`.
 
 ## Consensus Engine
 

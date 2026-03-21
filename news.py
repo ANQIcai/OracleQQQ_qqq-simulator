@@ -1,9 +1,12 @@
+import logging
 import os
 import requests
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from dotenv import load_dotenv
+
+log = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -213,11 +216,11 @@ def fetch_alphavantage_news() -> list:
 
     # Detect rate limit or API errors explicitly so they don't silently look like empty data
     if "Information" in data or "Note" in data:
-        print(f"[news] Alpha Vantage rate limit/error: {data.get('Information', data.get('Note', ''))[:120]}")
+        log.debug("[news] Alpha Vantage rate limit/error: %s", data.get('Information', data.get('Note', ''))[:120])
         return []
 
     if "feed" not in data:
-        print(f"[news] Alpha Vantage unexpected response keys: {list(data.keys())[:5]}")
+        log.debug("[news] Alpha Vantage unexpected response keys: %s", list(data.keys())[:5])
         return []
 
     articles = []
@@ -312,12 +315,12 @@ def fetch_finnhub_news() -> list:
             resp = requests.get(url, timeout=10)
             items = resp.json()
             if not isinstance(items, list):
-                print(f"[news] Finnhub unexpected response from {url[:60]}: {str(items)[:80]}")
+                log.debug("[news] Finnhub unexpected response from %s: %s", url[:60], str(items)[:80])
                 continue
             # Cap per-endpoint to avoid drowning in one source
             articles.extend(_finnhub_items_to_articles(items[:30]))
         except Exception as exc:
-            print(f"[news] Finnhub fetch error for {url[:60]}: {exc}")
+            log.debug("[news] Finnhub fetch error for %s: %s", url[:60], exc)
             continue
     return articles
 
@@ -363,15 +366,15 @@ def fetch_all_news() -> list:
     av = fetch_alphavantage_news()
     fh = fetch_finnhub_news()
     merged = _deduplicate(av + fh)
-    print(f"[news] raw: {len(av)} AV + {len(fh)} FH = {len(merged)} after dedup")
+    log.debug("[news] raw: %d AV + %d FH = %d after dedup", len(av), len(fh), len(merged))
 
     cutoff = datetime.now() - timedelta(hours=72)
     fresh = [a for a in merged if a.published >= cutoff]
-    print(f"[news] fresh (72h): {len(fresh)}")
+    log.debug("[news] fresh (72h): %d", len(fresh))
 
     filtered = [a for a in fresh if a.relevance_score >= _RELEVANCE_THRESHOLD]
     filtered.sort(key=lambda a: a.published, reverse=True)
-    print(f"[news] after relevance filter (>={_RELEVANCE_THRESHOLD}): {len(filtered)}")
+    log.debug("[news] after relevance filter (>=%s): %d", _RELEVANCE_THRESHOLD, len(filtered))
 
     if len(filtered) < _FALLBACK_MIN_ARTICLES:
         # Fallback: top articles by score from 72h pool, regardless of threshold
@@ -384,7 +387,7 @@ def fetch_all_news() -> list:
             a.relevance_score = -1.0  # flag as unfiltered for optional UI badge
         filtered = filtered + fallback_pool
         filtered.sort(key=lambda a: a.published, reverse=True)
-        print(f"[news] fallback added {len(fallback_pool)} articles, total={len(filtered)}")
+        log.debug("[news] fallback added %d articles, total=%d", len(fallback_pool), len(filtered))
 
     return filtered
 

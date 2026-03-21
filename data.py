@@ -16,6 +16,18 @@ class DataFetchError(Exception):
     pass
 
 
+@st.cache_data(ttl=3600)
+def fetch_ohlcv_5y(ticker: str = "QQQ") -> pd.DataFrame:
+    """5-year OHLCV for historical analogues (cached 1h — rarely changes)."""
+    df = yf.download(ticker, period="5y", auto_adjust=True, progress=False)
+    if df is None or df.empty:
+        raise DataFetchError(f"No data returned for {ticker}")
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df = df.dropna()
+    return df
+
+
 @st.cache_data(ttl=300)
 def fetch_ohlcv(ticker: str = "QQQ", period: str = "2y") -> pd.DataFrame:
     df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
