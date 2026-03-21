@@ -397,88 +397,97 @@ _TYPE_AGENT = {
 }
 
 
-def _render_month_grid(year: int, month: int, event_map: dict, today_str: str) -> str:
-    """Render a single month grid table."""
+def render_calendar_html(events: list, year: int = None, month: int = None) -> str:
+    """Render a single-month CSS-grid calendar with event dots.
+
+    Args:
+        events: list of event dicts with 'date' and 'type' keys
+        year:   4-digit year (defaults to current year)
+        month:  1-12 month (defaults to current month)
+    """
+    today = date.today()
+    today_str = today.strftime("%Y-%m-%d")
+    if year is None:
+        year = today.year
+    if month is None:
+        month = today.month
+
     first_weekday = date(year, month, 1).weekday()  # 0=Monday
     _, days_in_month = calendar.monthrange(year, month)
 
-    html = (
-        f'<div style="color:#787b86;font-size:9px;font-weight:600;letter-spacing:0.5px;'
-        f'margin-bottom:4px">{calendar.month_name[month]} {year}</div>'
-        '<table style="width:100%;border-collapse:collapse">'
-        '<tr>'
+    # Build event map for this month only
+    month_prefix = f"{year:04d}-{month:02d}-"
+    event_map: dict = {}
+    for e in events:
+        d = (e.get("date") or "")[:10]
+        if d.startswith(month_prefix):
+            event_map.setdefault(d, []).append(e.get("type", ""))
+
+    # Day-header row
+    cell = (
+        "display:flex;flex-direction:column;align-items:center;"
+        "justify-content:flex-start;width:34px;min-height:36px;"
+        "box-sizing:border-box;padding-top:2px"
     )
-    for day_abbr in ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]:
-        html += f'<th style="color:#787b86;text-align:center;padding:1px 0;font-size:8px">{day_abbr}</th>'
-    html += "</tr><tr>"
+    grid_style = (
+        "display:grid;grid-template-columns:repeat(7,34px);"
+        "gap:0;width:238px"
+    )
 
-    col = first_weekday
+    html = f'<div style="{grid_style}">'
+    weekend_idx = {5, 6}  # Sa=5, Su=6 (0-indexed in 7-col grid)
+    for col_i, abbr in enumerate(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]):
+        color = "#555" if col_i in weekend_idx else "#787b86"
+        html += (
+            f'<div style="text-align:center;font-size:9px;color:{color};'
+            f'letter-spacing:0;padding-bottom:2px">{abbr}</div>'
+        )
+    html += "</div>"
+
+    # Day grid
+    html += f'<div style="{grid_style}">'
+
+    # Empty cells before the 1st
     for _ in range(first_weekday):
-        html += "<td></td>"
+        html += f'<div style="{cell}"></div>'
 
+    col_pos = first_weekday
     for day_num in range(1, days_in_month + 1):
         date_str = f"{year:04d}-{month:02d}-{day_num:02d}"
         is_today = date_str == today_str
-        is_past = date_str < today_str
+        is_weekend = col_pos % 7 in weekend_idx
 
-        num_color = "#3a3a3a" if is_past else "#d1d4dc"
-        cell_bg = "background:#2a2a2e;border-radius:3px;" if is_today else ""
+        if is_today:
+            num_style = (
+                "display:inline-flex;align-items:center;justify-content:center;"
+                "width:20px;height:20px;border-radius:50%;"
+                "background:#2a2a2e;color:#d1d4dc;font-size:11px;font-weight:600"
+            )
+        elif is_weekend:
+            num_style = "font-size:11px;color:#3a3a3e"
+        else:
+            num_style = "font-size:11px;color:#787b86"
 
-        dot_html = ""
-        for etype in event_map.get(date_str, []):
-            c = _TYPE_COLORS.get(etype, "#787b86")
-            dot_html += f'<span style="color:{c};font-size:5px;line-height:1">●</span>'
+        dots_html = ""
+        etypes = event_map.get(date_str, [])
+        if etypes:
+            dots_html = '<div style="display:flex;gap:2px;justify-content:center;margin-top:2px">'
+            for etype in etypes:
+                c = _TYPE_COLORS.get(etype, "#787b86")
+                dots_html += (
+                    f'<span style="display:inline-block;width:4px;height:4px;'
+                    f'border-radius:50%;background:{c}"></span>'
+                )
+            dots_html += "</div>"
 
         html += (
-            f'<td style="text-align:center;padding:1px 0;{cell_bg}">'
-            f'<div style="color:{num_color};font-size:9px">{day_num}</div>'
+            f'<div style="{cell}">'
+            f'<span style="{num_style}">{day_num}</span>'
+            f'{dots_html}'
+            f'</div>'
         )
-        if dot_html:
-            html += f'<div style="line-height:1.2">{dot_html}</div>'
-        html += "</td>"
 
-        col += 1
-        if col == 7:
-            html += "</tr><tr>"
-            col = 0
+        col_pos += 1
 
-    html += "</tr></table>"
-    return html
-
-
-def render_calendar_html(key_dates: list) -> str:
-    """Render two month grids (current + next) with colored event dots as an HTML string."""
-    today = date.today()
-    today_str = today.strftime("%Y-%m-%d")
-
-    # Build event map for both months
-    event_map: dict = {}
-    for e in key_dates:
-        d = (e.get("date") or "")[:10]
-        if d:
-            event_map.setdefault(d, []).append(e.get("type", ""))
-
-    # Current month
-    cur_year, cur_month = today.year, today.month
-    # Next month (handle year rollover)
-    if cur_month == 12:
-        nxt_year, nxt_month = cur_year + 1, 1
-    else:
-        nxt_year, nxt_month = cur_year, cur_month + 1
-
-    html = '<div style="font-size:10px">'
-    html += _render_month_grid(cur_year, cur_month, event_map, today_str)
-    html += '<div style="margin-top:12px">'
-    html += _render_month_grid(nxt_year, nxt_month, event_map, today_str)
-    html += '</div>'
-
-    # Legend
-    html += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'
-    for label, color in [
-        ("Earn", "#ef5350"), ("FOMC", "#26a69a"),
-        ("Eco", "#787b86"), ("OpEx", "#d1d4dc"),
-    ]:
-        html += f'<span style="font-size:8px;color:{color}">● {label}</span>'
-    html += "</div></div>"
-
+    html += "</div>"
     return html

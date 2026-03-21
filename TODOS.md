@@ -12,6 +12,14 @@
 
 ## UX Improvements
 
+### Calendar nav button accessibility
+**What:** The ◀ ▶ month navigation buttons announce as symbol names to screen readers, not "previous month" / "next month".
+**Why:** Streamlit's `st.button()` has no `aria-label` parameter. Screen readers read the raw Unicode character name.
+**Pros:** Fixing it properly means a custom Streamlit component — correct signal for any future a11y audit.
+**Cons:** Requires a custom component; high effort for low current impact.
+**Context:** Flagged during plan-design-review of calendar widget redesign (2026-03-21). Known Streamlit platform limitation, not an app bug.
+**Depends on / blocked by:** Nothing — but fix requires a custom Streamlit component.
+
 ### Enter key submission for Ask an Agent input
 **What:** Allow pressing Enter to submit a question in the "Ask an Agent" chat input, instead of requiring a mouse click on "Ask".
 **Why:** Standard UX expectation for chat-style interfaces. Click-only input adds friction for keyboard users.

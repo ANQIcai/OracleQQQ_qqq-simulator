@@ -61,6 +61,28 @@ section[data-testid="stSidebar"] > div {
 }
 [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] { display: none !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] { margin: 0 !important; }
+/* Calendar nav buttons — transparent, icon-only style */
+[data-testid="stSidebar"] button[kind="secondary"].cal-nav,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
+    background: transparent !important;
+    border: none !important;
+    color: #787b86 !important;
+    padding: 0 6px !important;
+    font-size: 13px !important;
+    min-height: unset !important;
+    box-shadow: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover:not(:disabled) {
+    color: #d1d4dc !important;
+    background: transparent !important;
+    border: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:disabled {
+    color: #2a2a2e !important;
+    cursor: default !important;
+    background: transparent !important;
+    border: none !important;
+}
 
 [data-testid="stHeader"] { background: #000000 !important; border: none !important; }
 .block-container { padding: 0.5rem 1rem 1.5rem 1rem !important; max-width: 100% !important; }
@@ -365,6 +387,10 @@ if "debate_stances" not in st.session_state:
     st.session_state.debate_stances = {}
 if "ask_in_flight" not in st.session_state:
     st.session_state.ask_in_flight = False
+if "cal_month" not in st.session_state:
+    st.session_state.cal_month = datetime.now().month
+if "cal_year" not in st.session_state:
+    st.session_state.cal_year = datetime.now().year
 
 hist_mod.seed_demo_history()
 
@@ -432,7 +458,7 @@ with st.sidebar:
     _hdr_col, _ref_col = st.columns([4, 1])
     with _hdr_col:
         st.markdown(
-            '<div style="font-size:14px;font-weight:700;color:#d1d4dc;letter-spacing:0.3px;padding:4px 0">'
+            '<div style="font-size:20px;font-weight:700;color:#d1d4dc;letter-spacing:0.3px;padding:4px 0">'
             'Market Intel</div>',
             unsafe_allow_html=True,
         )
@@ -499,19 +525,89 @@ with st.sidebar:
             _cards += f'<div style="padding:6px 0;border-bottom:1px solid #2a2a2e;{_lb}"><div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-bottom:4px">{_pills}<span style="font-size:8px;color:#787b86">{_ago} · {_a.source or ""}</span></div><div style="font-size:12px;color:#d1d4dc;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{_a.title}</div>{_link}</div>'
         st.markdown(f'<div class="tv-news-scroll">{_cards}</div>', unsafe_allow_html=True)
 
-    # ── KEY DATES as single HTML block ──
+    # ── KEY DATES — single-month calendar with nav ──
     _kd = st.session_state.key_dates_cache
-    _cal_html = f'''<div style="border-top:1px solid #2a2a2e;padding-top:12px;margin-top:8px;margin-bottom:16px">
-<div style="font-size:9px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:#d1d4dc;margin-bottom:8px">KEY DATES</div>
-{ld_mod.render_calendar_html(_kd)}'''
-    if _kd:
-        _cal_html += '<div style="margin-top:6px">'
-        for _e in _kd[:8]:
+    import calendar as _cal_mod
+    _today = datetime.now()
+    _min_year = _today.year - 1 if _today.month > 1 else _today.year - 2
+    _min_month = (_today.month - 1) or 12  # one month back but we allow 12 months back total
+    # Compute absolute month counts for bound check (months since year 0)
+    _now_abs = _today.year * 12 + _today.month
+    _sel_abs = st.session_state.cal_year * 12 + st.session_state.cal_month
+    _at_min = (_now_abs - _sel_abs) >= 12
+    _at_max = (_sel_abs - _now_abs) >= 12
+
+    st.markdown(
+        '<div style="border-top:1px solid #2a2a2e;padding-top:12px;margin-top:8px;margin-bottom:4px">'
+        '<div style="font-size:9px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;'
+        'color:#d1d4dc;margin-bottom:6px">KEY DATES</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    _cal_left, _cal_title, _cal_right = st.columns([1, 4, 1])
+    with _cal_left:
+        if st.button("◀", key="cal_prev", disabled=_at_min):
+            if st.session_state.cal_month == 1:
+                st.session_state.cal_month = 12
+                st.session_state.cal_year -= 1
+            else:
+                st.session_state.cal_month -= 1
+            st.rerun()
+    with _cal_title:
+        _month_name = _cal_mod.month_name[st.session_state.cal_month]
+        st.markdown(
+            f'<div style="text-align:center;font-size:11px;color:#d1d4dc;font-weight:600;padding-top:4px">'
+            f'{_month_name} {st.session_state.cal_year}</div>',
+            unsafe_allow_html=True,
+        )
+    with _cal_right:
+        if st.button("▶", key="cal_next", disabled=_at_max):
+            if st.session_state.cal_month == 12:
+                st.session_state.cal_month = 1
+                st.session_state.cal_year += 1
+            else:
+                st.session_state.cal_month += 1
+            st.rerun()
+
+    _cal_html = ld_mod.render_calendar_html(
+        _kd or [],
+        year=st.session_state.cal_year,
+        month=st.session_state.cal_month,
+    )
+
+    # Legend + event list
+    _legend = (
+        '<div style="display:flex;gap:8px;margin-top:6px;margin-bottom:6px;flex-wrap:wrap">'
+    )
+    for _lbl, _lc in [("Earn", "#ef5350"), ("FOMC", "#26a69a"), ("Eco", "#787b86"), ("OpEx", "#d1d4dc")]:
+        _legend += f'<span style="font-size:8px;color:{_lc}">● {_lbl}</span>'
+    _legend += "</div>"
+
+    # Events filtered to selected month
+    _sel_prefix = f"{st.session_state.cal_year:04d}-{st.session_state.cal_month:02d}-"
+    _month_events = [e for e in (_kd or []) if (e.get("date") or "").startswith(_sel_prefix)]
+    _events_html = ""
+    if _month_events:
+        for _e in _month_events[:8]:
             _tc = ld_mod._TYPE_COLORS.get(_e["type"], "#787b86")
-            _cal_html += f'<div style="display:flex;gap:5px;align-items:flex-start;padding:2px 0;border-bottom:1px solid #2a2a2e"><span style="color:{_tc};font-size:8px;margin-top:2px">●</span><div style="font-size:9px"><span style="color:#787b86">{_e["date"]}</span> <span style="color:#d1d4dc">{_e["event"]}</span><div style="color:#787b86;font-size:8px">→ {_e["agent"]}</div></div></div>'
-        _cal_html += '</div>'
-    _cal_html += '</div>'
-    st.markdown(_cal_html, unsafe_allow_html=True)
+            _events_html += (
+                f'<div style="display:flex;gap:5px;align-items:flex-start;padding:2px 0;'
+                f'border-bottom:1px solid #2a2a2e">'
+                f'<span style="color:{_tc};font-size:8px;margin-top:2px">●</span>'
+                f'<div style="font-size:9px">'
+                f'<span style="color:#787b86">{_e["date"]}</span> '
+                f'<span style="color:#d1d4dc">{_e["event"]}</span>'
+                f'<div style="color:#787b86;font-size:8px">→ {_e["agent"]}</div>'
+                f'</div></div>'
+            )
+    else:
+        _events_html = '<div style="font-size:9px;color:#787b86;padding:6px 0">No events this month</div>'
+
+    st.markdown(
+        f'{_cal_html}{_legend}'
+        f'<div style="margin-bottom:16px">{_events_html}</div>',
+        unsafe_allow_html=True,
+    )
 
     # ── INDICATORS as single HTML block ──
     _ind_data = [
@@ -534,7 +630,7 @@ with st.sidebar:
     _cons = st.session_state.consensus_cache
     _cons_block = '<div style="border-top:1px solid #2a2a2e;padding-top:12px;margin-top:8px;margin-bottom:16px"><div style="font-size:9px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:#d1d4dc;margin-bottom:8px">ANALYST CONSENSUS</div>'
     if _cons:
-        _cons_block += '<table style="width:100%;font-size:10px;border-collapse:collapse"><tr><th style="color:#787b86;text-align:left;padding:3px 0">Sym</th><th style="color:#26a69a;text-align:right;padding:3px 0">Buy</th><th style="color:#787b86;text-align:right;padding:3px 0">Hold</th><th style="color:#ef5350;text-align:right;padding:3px 0">Sell</th><th style="color:#d1d4dc;text-align:right;padding:3px 0">PT</th></tr>'
+        _cons_block += '<table style="width:100%;font-size:10px;border-collapse:collapse;margin:0 auto"><tr><th style="color:#787b86;text-align:left;padding:3px 0">Sym</th><th style="color:#26a69a;text-align:right;padding:3px 0">Buy</th><th style="color:#787b86;text-align:right;padding:3px 0">Hold</th><th style="color:#ef5350;text-align:right;padding:3px 0">Sell</th><th style="color:#d1d4dc;text-align:right;padding:3px 0">PT</th></tr>'
         for _c in _cons:
             _pt = f"${_c['target_mean']:.0f}" if _c.get("target_mean") else "—"
             _cons_block += f'<tr style="border-top:1px solid #2a2a2e"><td style="color:#d1d4dc;padding:3px 0">{_c["symbol"]}</td><td style="color:#26a69a;text-align:right;padding:3px 0">{_c["buy"]}</td><td style="color:#787b86;text-align:right;padding:3px 0">{_c["hold"]}</td><td style="color:#ef5350;text-align:right;padding:3px 0">{_c["sell"]}</td><td style="color:#d1d4dc;text-align:right;padding:3px 0">{_pt}</td></tr>'
