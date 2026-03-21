@@ -468,7 +468,7 @@ with st.sidebar:
     st.markdown(
         f'<div style="border-top:1px solid #2a2a2e;padding-top:12px;margin-top:8px">'
         f'<div style="font-size:9px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:#d1d4dc;margin-bottom:8px">'
-        f'QQQ NEWS <span style="font-weight:400;color:#787b86">{_total_arts}</span></div></div>',
+        f'QQQ NEWS <span style="font-weight:400;color:#787b86;letter-spacing:0">{_total_arts}</span></div></div>',
         unsafe_allow_html=True,
     )
 
