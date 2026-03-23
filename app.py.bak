@@ -1,0 +1,907 @@
+import os
+from datetime import datetime
+import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
+
+st.set_page_config(
+    page_title="QQQ Simulator",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    page_icon="📈",
+)
+
+# ── Dark terminal CSS ──────────────────────────────────────────────────────────
+st.markdown(
+    """
+<style>
+html, body, [data-testid="stApp"] {
+    background-color: #131722 !important;
+    color: #d1d4dc !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif !important;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #131722 !important;
+    border-right: 1px solid #2a2e39 !important;
+    padding-top: 1.5rem !important;
+}
+[data-testid="stSidebarContent"] { padding: 0 !important; }
+[data-testid="stSidebar"] .block-container { padding: 1rem !important; }
+[data-testid="stSidebar"] hr {
+    margin: 0.75rem 0 !important;
+    border-color: #2a2e39 !important;
+}
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 10px !important; }
+[data-testid="stSidebar"] .stMarkdown { margin-bottom: 0 !important; }
+[data-testid="stSidebar"] .stTextArea { margin-bottom: 0 !important; }
+[data-testid="stSidebar"] .stButton { margin-top: 0 !important; margin-bottom: 0 !important; }
+
+[data-testid="stHeader"] { background: #1e222d; border-bottom: 1px solid #2a2e39; }
+.block-container { padding: 1rem 1rem 1.5rem 1rem !important; max-width: 100% !important; }
+
+/* Topbar */
+.topbar {
+    background: #1e222d;
+    border-bottom: 1px solid #2a2e39;
+    padding: 6px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Trebuchet MS', -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, sans-serif;
+    font-size: 11px;
+}
+.topbar-logo { font-weight: 700; letter-spacing: 0.08em; color: #d1d4dc; }
+.topbar-div { width: 1px; height: 14px; background: #2a2e39; display: inline-block; }
+.topbar-meta { color: #787b86; }
+
+/* Agent cards */
+.agent-card {
+    background: #1e222d;
+    border: 1px solid #2a2e39;
+    border-radius: 3px;
+    padding: 10px;
+    position: relative;
+    height: 100%;
+}
+.agent-accent { height: 2px; margin: -10px -10px 8px -10px; border-radius: 3px 3px 0 0; }
+.agent-name { font-size: 11px; font-weight: 700; color: #d1d4dc; margin-bottom: 1px; }
+.agent-role { font-size: 9px; color: #787b86; margin-bottom: 6px; }
+.agent-dir {
+    font-family: 'Trebuchet MS', -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, sans-serif;
+    font-size: 12px; font-weight: 700;
+}
+.agent-dir.bull { color: #26a69a; }
+.agent-dir.bear { color: #ef5350; }
+.agent-dir.neu  { color: #787b86; }
+.agent-conf {
+    font-family: 'Trebuchet MS', -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, sans-serif;
+    font-size: 10px; color: #787b86;
+}
+.agent-target {
+    font-family: 'Trebuchet MS', -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, sans-serif;
+    font-size: 10px; color: #787b86; margin: 3px 0;
+}
+.agent-target span { color: #d1d4dc; }
+.agent-reasoning {
+    font-size: 9px; color: #787b86; line-height: 1.45;
+    border-left: 2px solid #2a2e39; padding-left: 6px; margin-top: 5px;
+}
+.agent-revised {
+    font-size: 8px; color: #787b86;
+    border: 1px solid #2a2e39; background: #1e222d;
+    border-radius: 2px; padding: 1px 4px; display: inline-block; margin-top: 3px;
+}
+.agent-error { font-size: 9px; color: #ef5350; margin-top: 4px; }
+
+/* Inputs */
+textarea, .stTextArea textarea {
+    background: #131722 !important;
+    border: 1px solid #2a2e39 !important;
+    color: #d1d4dc !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif !important;
+    font-size: 12px !important;
+    border-radius: 3px !important;
+}
+textarea:focus { border-color: #363a45 !important; }
+
+/* All buttons — grey style, no blue */
+.stButton > button {
+    background: #2a2e39 !important;
+    color: #d1d4dc !important;
+    border: 1px solid #363a45 !important;
+    font-weight: 600 !important;
+    font-size: 11px !important;
+    border-radius: 3px !important;
+    width: 100%;
+}
+.stButton > button:hover { background: #363a45 !important; }
+
+/* Selectbox */
+.stSelectbox > div > div {
+    background: #131722 !important;
+    border-color: #2a2e39 !important;
+    color: #d1d4dc !important;
+}
+
+/* Metrics */
+[data-testid="stMetric"] {
+    background: #1e222d;
+    border: 1px solid #2a2e39;
+    border-radius: 3px;
+    padding: 8px 10px;
+}
+[data-testid="stMetricValue"] {
+    font-family: 'Trebuchet MS', -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, sans-serif !important;
+    font-size: 18px !important;
+    color: #d1d4dc !important;
+}
+[data-testid="stMetricLabel"] { font-size: 9px !important; color: #787b86 !important; }
+
+/* Section headers */
+.section-hd {
+    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: #787b86;
+    margin-top: 0; margin-bottom: 8px;
+    overflow: visible; white-space: nowrap; line-height: 1.4;
+}
+.sidebar-section-hd {
+    font-size: 10px; font-weight: 600; letter-spacing: 1.5px;
+    text-transform: uppercase; color: #787b86;
+    margin: 0 0 6px 0; padding: 0;
+}
+
+/* Probability bars */
+.prob-track {
+    height: 3px; background: #2a2e39; border-radius: 2px;
+    margin: 2px 0 6px 0; overflow: hidden;
+}
+.prob-fill { height: 100%; border-radius: 2px; }
+
+/* Analogue entries */
+.analogue { padding: 8px 0 4px 0; border-bottom: 1px solid #2a2e39; font-size: 10px; line-height: 1; }
+.analogue:last-child { border-bottom: none; }
+.analogue-date {
+    font-family: 'Trebuchet MS', -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, sans-serif;
+    color: #787b86; display: block; margin-bottom: 4px;
+}
+.analogue-event { color: #d1d4dc; display: block; margin-bottom: 4px; }
+.analogue-ret {
+    font-family: 'Trebuchet MS', -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, sans-serif;
+    font-weight: 600; display: block;
+}
+
+/* Indicator pills */
+.ind-pill {
+    font-family: 'Trebuchet MS', -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, sans-serif;
+    font-size: 10px; border: 1px solid #2a2e39; border-radius: 2px;
+    padding: 2px 7px; display: inline-block; margin: 2px; background: #1e222d;
+}
+.ind-pill.bull { color: #26a69a; }
+.ind-pill.bear { color: #ef5350; }
+.ind-pill.neu  { color: #787b86; }
+
+/* Stat rows */
+.stat-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0 0 0; font-size: 10px; overflow: visible; line-height: 1.4;
+}
+.stat-row + .stat-row { border-top: 1px solid #2a2e39; }
+.stat-key { color: #787b86; }
+.stat-val {
+    font-family: 'Trebuchet MS', -apple-system, BlinkMacSystemFont, Roboto, Ubuntu, sans-serif;
+    color: #d1d4dc;
+}
+.stat-val.up { color: #26a69a; }
+.stat-val.dn { color: #ef5350; }
+
+/* Chat */
+.chat-msg-user {
+    background: #1e222d; border: 1px solid #2a2e39; border-radius: 3px;
+    padding: 7px 10px; font-size: 10px; color: #787b86; margin-bottom: 6px;
+}
+.chat-msg-agent {
+    background: #1e222d; border: 1px solid #2a2e39; border-radius: 3px;
+    padding: 7px 10px; font-size: 10px; color: #d1d4dc; margin-bottom: 6px;
+}
+.chat-role {
+    font-size: 9px; color: #787b86; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3px;
+}
+
+/* Progress bar */
+.stProgress > div > div > div { background: #2a2e39 !important; }
+
+/* Dividers */
+hr { border-color: #2a2e39 !important; margin: 10px 0 !important; }
+
+/* Simulation status */
+.sim-status {
+    font-size: 9px; color: #787b86;
+    line-height: 1.8; padding: 4px 0 5px 0;
+    overflow: visible; white-space: normal; min-height: 20px;
+}
+
+/* Reduce default Streamlit element gaps */
+[data-testid="stVerticalBlock"] { gap: 4px !important; }
+.stMarkdown { margin-bottom: 0 !important; }
+.stButton { margin-top: 4px !important; margin-bottom: 0 !important; }
+.stRadio { margin-bottom: 0 !important; }
+.stTextArea { margin-bottom: 4px !important; }
+.stSelectbox { margin-bottom: 4px !important; }
+.stTextInput { margin-bottom: 4px !important; }
+
+/* Column padding */
+[data-testid="column"] { padding: 6px 8px !important; min-width: 0; }
+
+/* News filter: hide radio circles, style as TradingView text tabs */
+[data-testid="stSidebar"] [data-testid="stRadio"] > div { gap: 0 !important; flex-wrap: wrap !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label {
+    padding: 2px 6px !important; cursor: pointer !important; border-radius: 2px !important;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child { display: none !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label p {
+    font-size: 10px !important; color: #787b86 !important;
+    font-weight: 400 !important; margin: 0 !important; line-height: 1.6 !important;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] label:has([aria-checked="true"]) p {
+    color: #d1d4dc !important; font-weight: 600 !important;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] { margin-bottom: 4px !important; }
+
+/* Read-more link */
+.tv-rm:hover { color: #d1d4dc !important; }
+
+/* Scrollbar */
+.tv-news-scroll {
+    max-height: 350px; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: #363a45 transparent;
+}
+.tv-news-scroll::-webkit-scrollbar { width: 4px; }
+.tv-news-scroll::-webkit-scrollbar-track { background: transparent; }
+.tv-news-scroll::-webkit-scrollbar-thumb { background: #363a45; border-radius: 2px; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# ── Imports ────────────────────────────────────────────────────────────────────
+import data as data_mod
+import indicators as ind_mod
+import analogues as ana_mod
+import charts as charts_mod
+import history as hist_mod
+import news as news_mod
+import live_data as ld_mod
+from agents import run_simulation, AGENT_PERSONAS, ForecastResult
+from consensus import aggregate_forecasts_bayesian
+from streamlit_autorefresh import st_autorefresh
+
+# ── Session state ──────────────────────────────────────────────────────────────
+if "simulation" not in st.session_state:
+    st.session_state.simulation = None
+if "active_round" not in st.session_state:
+    st.session_state.active_round = 2
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = {}
+if "seed" not in st.session_state:
+    st.session_state.seed = None
+if "news_cache" not in st.session_state:
+    st.session_state.news_cache = []
+if "last_news_fetch" not in st.session_state:
+    st.session_state.last_news_fetch = None
+if "digest_cache" not in st.session_state:
+    st.session_state.digest_cache = {}
+if "key_dates_cache" not in st.session_state:
+    st.session_state.key_dates_cache = []
+if "consensus_cache" not in st.session_state:
+    st.session_state.consensus_cache = []
+if "live_quote_cache" not in st.session_state:
+    st.session_state.live_quote_cache = {}
+
+hist_mod.seed_demo_history()
+
+# ── Load data ──────────────────────────────────────────────────────────────────
+TICKER = "QQQ"
+try:
+    df = data_mod.fetch_ohlcv(TICKER, period="1y")
+    macro = data_mod.fetch_macro_context()
+    current_price = data_mod.get_current_price(df)
+    ind = ind_mod.compute_all(df)
+    regime = ana_mod.detect_regime(df, vix=macro.get("vix"))
+except Exception as e:
+    st.error(f"Data fetch failed: {e}")
+    st.stop()
+
+price_change = float(df["Close"].iloc[-1]) - float(df["Close"].iloc[-2])
+price_change_pct = price_change / float(df["Close"].iloc[-2]) * 100
+change_sign = "+" if price_change >= 0 else ""
+
+# ── News cache — refresh every 5 minutes, triggered by st_autorefresh ─────────
+st_autorefresh(interval=300_000, limit=None, key="news_autorefresh")
+_NEWS_REFRESH_SECS = 300
+_now = datetime.now()
+if (
+    st.session_state.last_news_fetch is None
+    or (_now - st.session_state.last_news_fetch).total_seconds() >= _NEWS_REFRESH_SECS
+):
+    st.session_state.news_cache = news_mod.fetch_all_news()
+    st.session_state.last_news_fetch = _now
+
+# Update AI digest (10-min cache handled inside generate_market_digest)
+if st.session_state.news_cache:
+    st.session_state.digest_cache = news_mod.generate_market_digest(st.session_state.news_cache)
+
+# ── Live market data — refresh every 5 min alongside news ─────────────────────
+if (
+    st.session_state.last_news_fetch is None
+    or (_now - st.session_state.last_news_fetch).total_seconds() >= _NEWS_REFRESH_SECS
+):
+    st.session_state.live_quote_cache = ld_mod.get_live_quote("QQQ")
+    st.session_state.key_dates_cache = ld_mod.get_all_key_dates()
+    st.session_state.consensus_cache = ld_mod.get_top_holdings_consensus()
+
+# Auto-build scenario from live news (replaces manual text input)
+scenario = news_mod.build_scenario_from_news(
+    st.session_state.digest_cache, st.session_state.news_cache, regime
+)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SIDEBAR
+# ══════════════════════════════════════════════════════════════════════════════
+with st.sidebar:
+    # ── MARKET PULSE ──────────────────────────────────────────────────────
+    st.markdown('<div class="sidebar-section-hd">MARKET PULSE</div>', unsafe_allow_html=True)
+    _lq = st.session_state.live_quote_cache
+    _lq_price = _lq.get("price") or current_price
+    _lq_chg = _lq.get("change") or price_change
+    _lq_chg_pct = _lq.get("change_pct") or price_change_pct
+    _lq_color = "#26a69a" if (_lq_chg or 0) >= 0 else "#ef5350"
+    _lq_sign = "+" if (_lq_chg or 0) >= 0 else ""
+    st.markdown(
+        f'<div style="font-family:Trebuchet MS,-apple-system,BlinkMacSystemFont,Roboto,Ubuntu,sans-serif">'
+        f'<span style="font-size:16px;font-weight:700;color:#d1d4dc">${_lq_price:.2f}</span>'
+        f'&nbsp;<span style="font-size:11px;color:{_lq_color}">'
+        f'{_lq_sign}{_lq_chg:.2f} ({_lq_sign}{_lq_chg_pct:.2f}%)</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    vix = macro.get("vix", 0) or 0
+    dxy = macro.get("dxy", "N/A")
+    y10 = macro.get("yield_10y", "N/A")
+    fed = macro.get("fed_rate", "N/A")
+    for label, val in [
+        ("VIX", vix),
+        ("DXY", dxy),
+        ("10Y Yield", f"{y10}%" if y10 else "N/A"),
+        ("Fed Rate", f"{fed}%" if fed else "N/A"),
+        ("Regime", regime),
+    ]:
+        _reg_color = "#ef5350" if label == "Regime" else "#d1d4dc"
+        st.markdown(
+            f'<div class="stat-row"><span class="stat-key">{label}</span>'
+            f'<span class="stat-val" style="color:{_reg_color}">{val}</span></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+
+    # ── LIVE NEWS ─────────────────────────────────────────────────────────
+    _nh_col, _nr_col = st.columns([5, 1])
+    with _nh_col:
+        _total_arts = len(st.session_state.news_cache)
+        st.markdown(
+            f'<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px">'
+            f'<span style="font-size:11px;font-weight:700;color:#d1d4dc;letter-spacing:0.3px">QQQ News</span>'
+            f'<span style="font-size:9px;color:#787b86">{_total_arts}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with _nr_col:
+        if st.button("↻", key="news_refresh_btn", help="Refresh"):
+            st.session_state.news_cache = news_mod.fetch_all_news()
+            st.session_state.last_news_fetch = datetime.now()
+            st.session_state.digest_cache = news_mod.generate_market_digest(st.session_state.news_cache)
+            st.session_state.live_quote_cache = ld_mod.get_live_quote("QQQ")
+            st.session_state.key_dates_cache = ld_mod.get_all_key_dates()
+            st.session_state.consensus_cache = ld_mod.get_top_holdings_consensus()
+            st.rerun()
+
+    # Category filter tabs
+    _filter = st.radio(
+        "news_filter",
+        ["All", "Fed & Rates", "Earnings", "Tech & AI", "Macro"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="news_category_filter",
+    )
+
+    # Apply filter
+    _FILTER_CATS = {
+        "All": None,
+        "Fed & Rates": ["Fed & Rates"],
+        "Earnings": ["Earnings"],
+        "Tech & AI": ["Tech & AI"],
+        "Macro": ["Economic Data", "Trade & Geopolitics", "Market Structure"],
+    }
+    _pool = st.session_state.news_cache
+    _active_cats = _FILTER_CATS.get(_filter)
+    if _active_cats:
+        _pool = [a for a in _pool if a.category in _active_cats]
+
+    if not _pool:
+        st.markdown(
+            '<div style="font-size:10px;color:#787b86;padding:8px 0">No articles in this category.</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        _cards = ""
+        for _a in _pool[:12]:
+            # Sentiment-gated left border
+            if _a.sentiment > 0.3:
+                _lborder = "border-left:2px solid #26a69a;padding-left:7px;margin-left:-1px;"
+            elif _a.sentiment < -0.3:
+                _lborder = "border-left:2px solid #ef5350;padding-left:7px;margin-left:-1px;"
+            else:
+                _lborder = "padding-left:0;"
+
+            # Ticker pills (grey, monospace, no colour)
+            _pills = "".join(
+                f'<span style="font-size:9px;color:#787b86;border:1px solid #2a2e39;'
+                f'border-radius:2px;padding:1px 4px;font-family:Trebuchet MS,-apple-system,BlinkMacSystemFont,Roboto,Ubuntu,sans-serif;white-space:nowrap">{t}</span>'
+                for t in (_a.tickers or [])[:4]
+            )
+
+            _ago = news_mod.time_ago(_a.published)
+            _src = _a.source or ""
+            _link = (
+                f'<a href="{_a.url}" target="_blank" class="tv-rm" '
+                f'style="font-size:10px;color:#787b86;text-decoration:none;'
+                f'display:inline-block;margin-top:4px">Read more →</a>'
+            ) if _a.url else ""
+
+            _cards += (
+                f'<div style="padding:8px 0;border-bottom:1px solid #2a2e39;{_lborder}">'
+                # Row 1: ticker pills + "Xh ago · Source"
+                f'<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:5px">'
+                f'{_pills}'
+                f'<span style="font-size:9px;color:#787b86;font-family:Trebuchet MS,-apple-system,BlinkMacSystemFont,Roboto,Ubuntu,sans-serif;white-space:nowrap">'
+                f'{_ago} · {_src}</span>'
+                f'</div>'
+                # Row 2: headline, 2 lines max
+                f'<div style="font-size:13px;color:#d1d4dc;line-height:1.35;'
+                f'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;'
+                f'overflow:hidden">{_a.title}</div>'
+                # Row 3: read more
+                f'{_link}'
+                f'</div>'
+            )
+
+        st.markdown(
+            f'<div class="tv-news-scroll">{_cards}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+
+    # ── KEY DATES CALENDAR ────────────────────────────────────────────────
+    st.markdown('<div class="sidebar-section-hd">KEY DATES</div>', unsafe_allow_html=True)
+    _kd = st.session_state.key_dates_cache
+    st.markdown(ld_mod.render_calendar_html(_kd), unsafe_allow_html=True)
+
+    # Next 5 upcoming events list
+    if _kd:
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+        _kd_html = ""
+        for _e in _kd[:5]:
+            _type_c = ld_mod._TYPE_COLORS.get(_e["type"], "#787b86")
+            _kd_html += (
+                f'<div style="display:flex;gap:6px;align-items:flex-start;'
+                f'padding:3px 0;border-bottom:1px solid #2a2e39">'
+                f'<span style="color:{_type_c};font-size:9px;margin-top:1px">●</span>'
+                f'<div style="font-size:9px">'
+                f'<span style="color:#787b86;font-family:Trebuchet MS,-apple-system,BlinkMacSystemFont,Roboto,Ubuntu,sans-serif">{_e["date"]}</span> '
+                f'<span style="color:#d1d4dc">{_e["event"]}</span>'
+                f'<div style="color:#787b86;font-size:8px">→ {_e["agent"]}</div>'
+                f'</div></div>'
+            )
+        st.markdown(_kd_html, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── INDICATORS ────────────────────────────────────────────────────────
+    st.markdown('<div class="sidebar-section-hd">INDICATORS</div>', unsafe_allow_html=True)
+    rsi = round(ind.get("rsi", 0) or 0, 2)
+    macd_v = round(ind.get("macd", 0) or 0, 2)
+    bb = ind.get("bb_position", "mid")
+    _ind_rows = [
+        ("RSI(14)", rsi, "bull" if rsi < 70 and rsi > 30 else ("bear" if rsi >= 70 else "neu")),
+        ("MACD", f"{macd_v:+.2f}", "bull" if macd_v > 0 else "bear"),
+        ("BB Pos", bb, "bull" if bb == "lower" else ("bear" if bb == "upper" else "neu")),
+        ("SMA20", ind.get("sma_20", "N/A"), "neu"),
+        ("SMA50", ind.get("sma_50", "N/A"), "neu"),
+        ("SMA200", ind.get("sma_200", "N/A"), "neu"),
+        ("EMA9", ind.get("ema_9", "N/A"), "neu"),
+        ("ATR(14)", ind.get("atr", "N/A"), "neu"),
+    ]
+    for _lbl, _val, _cls in _ind_rows:
+        _color = "#26a69a" if _cls == "bull" else "#ef5350" if _cls == "bear" else "#d1d4dc"
+        st.markdown(
+            f'<div class="stat-row"><span class="stat-key">{_lbl}</span>'
+            f'<span class="stat-val" style="color:{_color}">{_val}</span></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+
+    # ── ANALYST CONSENSUS ─────────────────────────────────────────────────
+    st.markdown('<div class="sidebar-section-hd">ANALYST CONSENSUS</div>', unsafe_allow_html=True)
+    _cons = st.session_state.consensus_cache
+    if _cons:
+        _cons_html = (
+            '<table style="width:100%;font-size:9px;border-collapse:collapse">'
+            '<tr><th style="color:#787b86;text-align:left;padding:2px 0">Sym</th>'
+            '<th style="color:#26a69a;text-align:right">Buy</th>'
+            '<th style="color:#787b86;text-align:right">Hold</th>'
+            '<th style="color:#ef5350;text-align:right">Sell</th>'
+            '<th style="color:#d1d4dc;text-align:right">PT</th></tr>'
+        )
+        for _c in _cons:
+            _pt = f"${_c['target_mean']:.0f}" if _c.get("target_mean") else "—"
+            _cons_html += (
+                f'<tr style="border-top:1px solid #2a2e39">'
+                f'<td style="color:#d1d4dc;padding:2px 0;font-family:Trebuchet MS,-apple-system,BlinkMacSystemFont,Roboto,Ubuntu,sans-serif">{_c["symbol"]}</td>'
+                f'<td style="color:#26a69a;text-align:right">{_c["buy"]}</td>'
+                f'<td style="color:#787b86;text-align:right">{_c["hold"]}</td>'
+                f'<td style="color:#ef5350;text-align:right">{_c["sell"]}</td>'
+                f'<td style="color:#d1d4dc;text-align:right">{_pt}</td>'
+                f'</tr>'
+            )
+        _cons_html += "</table>"
+        st.markdown(_cons_html, unsafe_allow_html=True)
+    else:
+        st.markdown('<div style="font-size:9px;color:#787b86">Loading analyst data…</div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── HISTORICAL ANALOGUES ──────────────────────────────────────────────
+    st.markdown('<div class="sidebar-section-hd">HISTORICAL ANALOGUES</div>', unsafe_allow_html=True)
+    analogues = ana_mod.find_analogues(df, scenario, regime)
+    if analogues:
+        for a in analogues:
+            ret_color = "#26a69a" if a.return_5d > 0 else "#ef5350"
+            sign = "+" if a.return_5d > 0 else ""
+            st.markdown(f"**{a.date}** — {a.event_label[:45]}")
+            st.markdown(f"<span style='color:{ret_color}'>{sign}{a.return_5d:.1f}% (5d)</span>", unsafe_allow_html=True)
+    else:
+        st.markdown("_No analogues found_")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TOPBAR — rendered once in main area only
+# ══════════════════════════════════════════════════════════════════════════════
+_tb_color = "#26a69a" if price_change >= 0 else "#ef5350"
+st.markdown(
+    f"""
+<div class="topbar">
+  <span class="topbar-logo">QQQ SIM</span>
+  <span class="topbar-div"></span>
+  <span style="font-weight:700;color:#d1d4dc">{TICKER}</span>
+  <span style="font-weight:600;color:{_tb_color}">{current_price:.2f}</span>
+  <span style="color:{_tb_color}">{change_sign}{price_change:.2f} ({change_sign}{price_change_pct:.2f}%)</span>
+  <span class="topbar-div"></span>
+  <span class="topbar-meta">NASDAQ · 1Y daily · Regime: {regime}</span>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MAIN COLUMNS — centre (chart + agents) | right (accuracy + chat)
+# ══════════════════════════════════════════════════════════════════════════════
+centre, right = st.columns([3, 1], gap="small")
+
+# ── Centre ─────────────────────────────────────────────────────────────────────
+with centre:
+    fig = charts_mod.build_candlestick(df, ind)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    # ── AI Market Digest ──────────────────────────────────────────────────
+    _dg = st.session_state.get("digest_cache", {})
+    if _dg.get("digest"):
+        _dg_color = (
+            "#26a69a" if "bull" in _dg.get("sentiment", "").lower()
+            else "#ef5350" if "bear" in _dg.get("sentiment", "").lower()
+            else "#787b86"
+        )
+        _dg_mins = (
+            int((datetime.now() - _dg["generated_at"]).total_seconds() / 60)
+            if _dg.get("generated_at") else 0
+        )
+        st.markdown(
+            f'<div style="background:#1e222d;border:1px solid #2a2e39;border-radius:4px;padding:12px;margin-bottom:8px">'
+            f'<div style="font-size:9px;color:#787b86;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">'
+            f'AI Market Digest &nbsp;·&nbsp; {_dg_mins}m ago</div>'
+            f'<div style="font-size:11px;color:#d1d4dc;line-height:1.55">{_dg["digest"]}</div>'
+            f'<div style="margin-top:8px;display:flex;gap:16px;flex-wrap:wrap">'
+            f'<span style="font-size:9px;color:{_dg_color}">● {_dg.get("sentiment","Neutral")}</span>'
+            f'<span style="font-size:9px;color:#787b86">KEY RISK: {_dg.get("key_risk","")}</span>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div style="background:#1e222d;border:1px solid #2a2e39;border-radius:4px;'
+            'padding:12px;margin-bottom:8px;font-size:10px;color:#787b86">'
+            'Generating AI Market Digest…</div>',
+            unsafe_allow_html=True,
+        )
+
+    predict_clicked = st.button("Predict QQQ Direction", use_container_width=True)
+
+    sim = st.session_state.simulation
+
+    if sim is None:
+        st.markdown(
+            '<div style="text-align:center;padding:24px;color:#787b86;font-size:11px">'
+            "Review the market digest above, then click Predict QQQ Direction"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        # Status + round selector (Bug 2: sim-status class ensures visible height)
+        valid_count = sum(1 for f in sim.rounds[2] if f.status == "ok")
+        scenario_label = st.session_state.seed["scenario"][:55]
+        st.markdown(
+            f'<div class="sim-status">'
+            f'<span style="color:#26a69a">●</span> Simulation complete &nbsp;·&nbsp; '
+            f'{valid_count}/5 agents &nbsp;·&nbsp; <span style="color:#d1d4dc">{scenario_label}</span>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        round_choice = st.radio(
+            "Round",
+            options=["R1 — Independent", "R2 — Challenge", "R3 — Final"],
+            index=st.session_state.active_round,
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+        round_idx = {"R1 — Independent": 0, "R2 — Challenge": 1, "R3 — Final": 2}[round_choice]
+        st.session_state.active_round = round_idx
+
+        # Agent cards
+        agent_names = list(AGENT_PERSONAS.keys())
+        agent_roles = {
+            "Macro Strategist": "Fed · rates · DXY",
+            "Momentum Analyst": "RSI · MACD · trend",
+            "Sentiment Analyst": "VIX · fear/greed",
+            "Quant Modeler": "Vol · stats",
+            "Earnings Analyst": "Tech · DCF",
+        }
+        accent_colors = {"bullish": "#26a69a", "bearish": "#ef5350", "neutral": "#787b86"}
+        dir_symbols = {"bullish": "▲", "bearish": "▼", "neutral": "◆"}
+        dir_cls = {"bullish": "bull", "bearish": "bear", "neutral": "neu"}
+
+        cols = st.columns(5, gap="small")
+        forecasts = sim.rounds[round_idx]
+        for i, (col, name) in enumerate(zip(cols, agent_names)):
+            f: ForecastResult = forecasts[i]
+            with col:
+                accent = accent_colors.get(f.direction, "#787b86") if f.status == "ok" else "#787b86"
+                dir_sym = dir_symbols.get(f.direction, "◆") if f.status == "ok" else "✕"
+                dir_c = dir_cls.get(f.direction, "neu") if f.status == "ok" else "bear"
+                revised_html = ""
+                if f.revised_from and f.revised_from != f.direction:
+                    revised_html = f'<div class="agent-revised">↕ Revised from {f.revised_from}</div>'
+                target_html = ""
+                if f.status == "ok" and f.target_low > 0:
+                    target_html = (
+                        f'<div class="agent-target">Target '
+                        f'<span>${f.target_low:.0f}–${f.target_high:.0f}</span></div>'
+                    )
+                conf_pct = int(f.confidence * 100)
+                error_html = f'<div class="agent-error">⚠ {f.reasoning[:60]}</div>' if f.status == "error" else ""
+                st.markdown(
+                    f"""<div class="agent-card">
+  <div class="agent-accent" style="background:{accent}"></div>
+  <div class="agent-name">{name}</div>
+  <div class="agent-role">{agent_roles[name]}</div>
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px">
+    <span class="agent-dir {dir_c}">{dir_sym} {f.direction.capitalize() if f.status=='ok' else 'Error'}</span>
+    <span class="agent-conf">{conf_pct}%</span>
+  </div>
+  <div style="height:2px;background:#2a2e39;border-radius:1px;margin-bottom:5px">
+    <div style="height:100%;width:{conf_pct}%;background:{accent};border-radius:1px"></div>
+  </div>
+  {target_html}
+  <div class="agent-reasoning">{f.reasoning}</div>
+  {revised_html}{error_html}
+</div>""",
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown("---")
+
+        # Consensus panel — method toggle
+        method_col, _ = st.columns([3, 3])
+        with method_col:
+            consensus_method = st.radio(
+                "Consensus method",
+                ["Simple", "Bayesian Ensemble"],
+                horizontal=True,
+                label_visibility="collapsed",
+                key="consensus_method_radio",
+            )
+
+        if consensus_method == "Bayesian Ensemble":
+            c = aggregate_forecasts_bayesian(sim.rounds, st.session_state.seed["scenario"])
+        else:
+            c = sim.consensus
+
+        bull_pct = int(c.bull_prob * 100)
+        base_pct = int(c.base_prob * 100)
+        bear_pct = int(c.bear_prob * 100)
+        delta_pct = ((c.consensus_target - current_price) / current_price * 100) if current_price else 0
+        delta_sign = "+" if delta_pct >= 0 else ""
+
+        st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+        cons_left, cons_mid, cons_right = st.columns([2, 2, 2], gap="medium")
+        with cons_left:
+            method_badge = ' <span style="color:#d1d4dc;font-size:9px">BAYESIAN</span>' if c.method == "bayesian" else ""
+            st.markdown(f'<div class="section-hd" style="margin-top:0">Scenario Probabilities{method_badge}</div>', unsafe_allow_html=True)
+            for label, pct, color in [("Bull", bull_pct, "#26a69a"), ("Base", base_pct, "#787b86"), ("Bear", bear_pct, "#ef5350")]:
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                    f'<span style="font-size:10px;font-family:Trebuchet MS,-apple-system,BlinkMacSystemFont,Roboto,Ubuntu,sans-serif;width:30px;color:{color}">{label}</span>'
+                    f'<div class="prob-track" style="flex:1"><div class="prob-fill" style="width:{pct}%;background:{color}"></div></div>'
+                    f'<span style="font-family:Trebuchet MS,-apple-system,BlinkMacSystemFont,Roboto,Ubuntu,sans-serif;font-size:10px;color:#787b86;width:28px;text-align:right">{pct}%</span>'
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+            st.markdown(
+                f'<div style="font-size:9px;color:#787b86;margin-top:4px">'
+                f"{c.agent_count}/5 agents · avg conf {int(c.avg_confidence*100)}%</div>",
+                unsafe_allow_html=True,
+            )
+
+        with cons_mid:
+            st.markdown('<div class="section-hd" style="margin-top:0">Price Targets (5d)</div>', unsafe_allow_html=True)
+            for label, val, color in [("Bull", f"${c.bull_target:.2f}", "#26a69a"), ("Base", f"${c.base_target:.2f}", "#d1d4dc"), ("Bear", f"${c.bear_target:.2f}", "#ef5350")]:
+                st.markdown(
+                    f'<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 0">'
+                    f'<span style="color:#787b86">{label}</span>'
+                    f'<span style="font-family:Trebuchet MS,-apple-system,BlinkMacSystemFont,Roboto,Ubuntu,sans-serif;color:{color}">{val}</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+        with cons_right:
+            st.markdown('<div class="section-hd" style="margin-top:0">Consensus</div>', unsafe_allow_html=True)
+            target_color = "#26a69a" if delta_pct >= 0 else "#ef5350"
+            st.markdown(
+                f'<div style="font-family:Trebuchet MS,-apple-system,BlinkMacSystemFont,Roboto,Ubuntu,sans-serif;font-size:22px;font-weight:700;color:{target_color}">'
+                f"${c.consensus_target:.2f}</div>"
+                f'<div style="font-size:10px;color:#787b86">{delta_sign}{delta_pct:.1f}% vs ${current_price:.2f}</div>',
+                unsafe_allow_html=True,
+            )
+            if c.method == "bayesian" and c.credible_low:
+                st.markdown(
+                    f'<div style="font-size:9px;color:#d1d4dc;margin-top:4px">'
+                    f"90% CI: ${c.credible_low:.2f} – ${c.credible_high:.2f}</div>",
+                    unsafe_allow_html=True,
+                )
+            if c.disagreement:
+                st.markdown(
+                    f'<div style="font-size:9px;color:#787b86;margin-top:4px;border-left:2px solid #787b86;padding-left:5px">'
+                    f"⚠ Split: {c.disagreement_detail}</div>",
+                    unsafe_allow_html=True,
+                )
+
+# Simulation runs outside column context so st.rerun() doesn't cause duplication
+if predict_clicked:
+    _auto_scenario = news_mod.build_scenario_from_news(
+        st.session_state.get("digest_cache", {}),
+        st.session_state.news_cache,
+        regime,
+    )
+    seed = {
+        "ticker": TICKER,
+        "scenario": _auto_scenario,
+        "price_history": df,
+        "current_price": current_price,
+        "current_indicators": ind,
+        "macro_context": macro,
+        "regime": regime,
+        "analogues": ana_mod.find_analogues(df, _auto_scenario, regime),
+        "live_news": st.session_state.news_cache,
+        "live_news_text": news_mod.format_for_agents(st.session_state.news_cache),
+        "live_quote": st.session_state.live_quote_cache,
+        "earnings_calendar": st.session_state.key_dates_cache
+            and [e for e in st.session_state.key_dates_cache if e["type"] == "earnings"],
+        "economic_calendar": st.session_state.key_dates_cache
+            and [e for e in st.session_state.key_dates_cache if e["type"] in ("economic", "fomc")],
+        "analyst_consensus": st.session_state.consensus_cache,
+        "key_dates": st.session_state.key_dates_cache,
+    }
+    st.session_state.seed = seed
+    st.session_state.chat_history = {}
+    st.session_state.active_round = 2
+    with st.spinner("Running prediction — 3 rounds × 5 agents…"):
+        result = run_simulation(seed)
+    st.session_state.simulation = result
+    hist_mod.save_prediction(seed, result)
+    st.rerun()
+
+# ── Right panel ────────────────────────────────────────────────────────────────
+with right:
+    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-hd" style="margin-top:0">Accuracy Replay</div>', unsafe_allow_html=True)
+    sc = hist_mod.get_scorecard()
+    m1, m2 = st.columns(2)
+    with m1:
+        st.metric("Correct", sc["correct"])
+        st.metric("Total", sc["total"])
+    with m2:
+        st.metric("Wrong", sc["wrong"])
+        st.metric("Accuracy", f"{sc['accuracy']}%")
+
+    if st.button("Score Past", key="score_btn"):
+        n = hist_mod.score_past_predictions()
+        st.success(f"Scored {n} predictions")
+
+    st.markdown("---")
+
+    # Agent chat — restored below accuracy panel
+    if st.session_state.simulation is not None:
+        st.markdown('<div class="section-hd" style="margin-top:16px">Ask an Agent</div>', unsafe_allow_html=True)
+        agent_options = list(AGENT_PERSONAS.keys())
+        selected_agent = st.selectbox("Agent", agent_options, label_visibility="collapsed")
+
+        chat_key = selected_agent
+        if chat_key not in st.session_state.chat_history:
+            st.session_state.chat_history[chat_key] = []
+
+        for msg in st.session_state.chat_history[chat_key]:
+            if msg["role"] == "user":
+                st.markdown(
+                    f'<div class="chat-msg-user"><div class="chat-role">You</div>{msg["content"]}</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f'<div class="chat-msg-agent"><div class="chat-role">{selected_agent}</div>{msg["content"]}</div>',
+                    unsafe_allow_html=True,
+                )
+
+        question = st.text_input("Ask", placeholder="Follow-up question…", label_visibility="collapsed")
+        if st.button("Ask", key="ask_btn") and question.strip():
+            agent_names = list(AGENT_PERSONAS.keys())
+            agent_idx = agent_names.index(selected_agent)
+            r3 = st.session_state.simulation.rounds[2][agent_idx]
+
+            from anthropic import Anthropic
+            from agents import AGENT_PERSONAS as personas
+
+            aclient = Anthropic()
+            prior_forecast = (
+                f"Your Round 3 forecast: direction={r3.direction}, "
+                f"confidence={r3.confidence:.0%}, target=${r3.target_low:.0f}–${r3.target_high:.0f}, "
+                f'reasoning="{r3.reasoning}"'
+            )
+            messages = [
+                {"role": "user", "content": prior_forecast},
+                {"role": "assistant", "content": "Understood. I stand by this forecast based on my analysis."},
+                {"role": "user", "content": question},
+            ]
+            with st.spinner("…"):
+                resp = aclient.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=300,
+                    system=personas[selected_agent]["system"],
+                    messages=messages,
+                )
+                answer = resp.content[0].text
+
+            st.session_state.chat_history[chat_key].append({"role": "user", "content": question})
+            st.session_state.chat_history[chat_key].append({"role": "assistant", "content": answer})
+            st.rerun()

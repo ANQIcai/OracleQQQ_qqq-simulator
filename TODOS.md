@@ -36,6 +36,24 @@ Added `fetch_ohlcv_5y()` in data.py (cached 1h). Both `find_analogues()` calls i
 ### ~~Replace debug prints with logging.debug in news.py~~ ✓ Done 2026-03-21
 All 8 `print(f"[news] ...")` calls replaced with `log.debug(...)`. Logger configured via `logging.getLogger(__name__)`.
 
+## FastAPI Backend
+
+### Shared cache between Streamlit and FastAPI
+**What:** Replace `@st.cache_data` in data.py with a shared `cachetools.TTLCache` so both the Streamlit server and the FastAPI server fetch market data from the same in-process cache.
+**Why:** When both servers run simultaneously, each downloads QQQ OHLCV data independently on the same TTL schedule — double the yfinance calls, double the latency.
+**Pros:** Eliminates redundant fetches. Makes both servers faster. Decouples data.py from Streamlit dependency entirely.
+**Cons:** Requires refactoring data.py — breaks Streamlit's built-in cache instrumentation panel.
+**Context:** Flagged during plan-eng-review of FastAPI backend (2026-03-22). Currently both processes use MemoryCacheStorageManager as the st.cache_data fallback, isolated per-process.
+**Depends on / blocked by:** api.py implementation (this PR).
+
+### Auth on `/api/predict`
+**What:** Add a simple `X-API-Key` header check (FastAPI `Depends()`) to the `POST /api/predict` endpoint.
+**Why:** `/api/predict` triggers 15 Anthropic API calls per request (~$0.05-0.15 per call). An unprotected endpoint on a shared network can be abused — intentionally or by accident.
+**Pros:** Prevents unauthorized Anthropic credit consumption. Trivial to implement with FastAPI security deps.
+**Cons:** Requires setting and sharing an API key for local dev. Minor friction.
+**Context:** Flagged during plan-eng-review of FastAPI backend (2026-03-22). Currently api.py uses `allow_origins=["*"]` with no auth on any endpoint.
+**Depends on / blocked by:** api.py implementation (this PR).
+
 ## Consensus Engine
 
 ### Calibrate Conviction Score against historical accuracy
